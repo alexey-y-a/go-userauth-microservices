@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace and build
+bin/
+dist/
+coverage/
+
+# Config
+.env
+*.log
+/.env*
+/*.env.local
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+/postgres-data
+
