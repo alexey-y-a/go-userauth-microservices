@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/alexey-y-a/go-userauth-microservices/libs/logger"
+	httpHandlers "github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/http"
+	"github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/storage"
 )
 
 func main() {
@@ -26,6 +28,12 @@ func main() {
             return
         }
     })
+
+    store := storage.NewMemoryStore()
+
+    authHandler := httpHandlers.NewAuthHandler(store)
+
+    authHandler.RegisterRoutes(mux)
 
      addr := ":8080"
 
