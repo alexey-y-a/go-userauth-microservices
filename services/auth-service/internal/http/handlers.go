@@ -15,7 +15,7 @@ import (
 
 type RegisterRequest struct {
     Username string `json:"username"`
-    Email string `json:"username"`
+    Email string `json:"email"`
     Password string `json:"password"`
 }
 
@@ -54,6 +54,7 @@ func NewAuthHandler(store storage.Store) *AuthHandler {
 
 func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
     mux.HandleFunc("/auth/register", h.handleRegister)
+    mux.HandleFunc("/auth/login", h.handleLogin)
 }
 
 func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -123,5 +124,91 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
         Str("username", user.Username).
         Int64("user_id", user.ID).
         Msg("user registered")
+}
 
+type LoginRequest struct {
+    Username string `json:"username"`
+    Password string `json:"password"`
+}
+
+func (r LoginRequest) Validate() error {
+    return validation.ValidateStruct(
+        &r,
+        validation.Field(&r.Username, validation.Required, validation.Length(3, 50)),
+        validation.Field(&r.Password, validation.Required, validation.Length(8, 100)),
+    )
+}
+
+type LoginResponse struct {
+    ID int64 `json:"id"`
+    Username string `json:"username"`
+    Email string `json:"email"`
+    LoggedInAt time.Time `json:"logged_in_at"`
+}
+
+func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        w.Header().Set("Allow", http.MethodPost)
+        w.WriteHeader(http.StatusMethodNotAllowed)
+        return
+    }
+
+    var req LoginRequest
+
+    err := json.NewDecoder(r.Body).Decode(&req)
+    defer r.Body.Close()
+
+    if err != nil {
+        h.log.Error().Err(err).Msg("failed to decode login request")
+        http.Error(w, "invalid JSON body", http.StatusBadRequest)
+        return
+    }
+
+    err = req.Validate()
+    if err != nil {
+        h.log.Error().Err(err).Msg("validation failed for login request")
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    user, exist , err := h.store.GetUserByUsername(req.Username)
+    if err != nil {
+        h.log.Error().Err(err).Msg("failed to get user by username")
+        http.Error(w, "internal error", http.StatusInternalServerError)
+        return
+    }
+
+    if !exist {
+        h.log.Warn().Str("username", req.Username).Msg("user not found on login")
+        http.Error(w, "invalid username or password", http.StatusUnauthorized)
+        return
+    }
+
+    err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
+    if err != nil {
+        h.log.Warn().Str("username", req.Username).Msg("invalid password or login")
+        http.Error(w, "invalid username or password", http.StatusUnauthorized)
+        return
+    }
+
+    resp := LoginResponse {
+        ID: user.ID,
+        Username: user.Username,
+        Email: user.Email,
+        LoggedInAt: time.Now().UTC(),
+    }
+
+    w.Header().Set("Content-Type", "application-json")
+    w.WriteHeader(http.StatusOK)
+
+    err = json.NewEncoder(w).Encode(resp)
+    if err != nil {
+        h.log.Error().Err(err).Msg("failed to write login response")
+        return
+    }
+
+    h.log.Info().
+        Int64("user_id", user.ID).
+        Str("username", user.Username).
+        Msg("user logged in")
 }
