@@ -58,12 +58,8 @@ func (s *memoryStore) CreateUser(username, email, passwordHash string) (User, er
 
 func (s *memoryStore) GetUserByUsername(username string) (User, bool, error) {
     s.mu.RLock()
-    defer s.mu.Unlock()
+    defer s.mu.RUnlock()
 
-    user, exists := s.users[username]
-    if exists {
-        return user, exists, nil
-    }
-
-    return user, !exists, nil
+    user, exist := s.users[username]
+    return user, exist, nil
 }
