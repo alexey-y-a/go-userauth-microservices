@@ -3,8 +3,10 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
+	appjwt "github.com/alexey-y-a/go-userauth-microservices/libs/jwt"
 	"github.com/alexey-y-a/go-userauth-microservices/libs/logger"
 	"github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/storage"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -140,10 +142,11 @@ func (r LoginRequest) Validate() error {
 }
 
 type LoginResponse struct {
+    AccessToken string `json:"access_token"`
+    ExpiresAt time.Time `json:"expires_at"`
     ID int64 `json:"id"`
     Username string `json:"username"`
     Email string `json:"email"`
-    LoggedInAt time.Time `json:"logged_in_at"`
 }
 
 func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -191,11 +194,21 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    accessToken, err := appjwt.GenerateAccessToken(userIDToString(user.ID))
+    if err != nil {
+        h.log.Error().Err(err).Int64("user_id", user.ID).Msg("failed to generate access token")
+        http.Error(w, "failed to generate token", http.StatusInternalServerError)
+        return
+    }
+
+    now := time.Now().UTC()
+
     resp := LoginResponse {
+        AccessToken: accessToken,
+        ExpiresAt: now.Add(time.Hour),
         ID: user.ID,
         Username: user.Username,
         Email: user.Email,
-        LoggedInAt: time.Now().UTC(),
     }
 
     w.Header().Set("Content-Type", "application-json")
@@ -211,4 +224,8 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
         Int64("user_id", user.ID).
         Str("username", user.Username).
         Msg("user logged in")
+}
+
+func userIDToString(id int64) string {
+    return strconv.FormatInt(id, 10)
 }
