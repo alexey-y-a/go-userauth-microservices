@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alexey-y-a/go-userauth-microservices/libs/logger"
+	httpHandlers "github.com/alexey-y-a/go-userauth-microservices/services/gateway-service/internal/http"
 )
 
 func main() {
@@ -28,6 +29,9 @@ func main() {
       }
     })
 
+    gatewayHandler := httpHandlers.NewGatewayHandler()
+    gatewayHandler.RegisterRoutes(mux)
+
     addr := ":8082"
 
     server := &http.Server {
@@ -37,27 +41,27 @@ func main() {
 
     sigChan := make(chan os.Signal, 1)
 
-     signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-     go func () {
-         log.Info().Str("addr", addr).Msg("starting gateway-service")
-         err := server.ListenAndServe()
-         if err != nil && err != http.ErrServerClosed {
-              log.Error().Err(err).Msg("gatwey-service stopped with error")
-         }
-     }()
+    go func () {
+        log.Info().Str("addr", addr).Msg("starting gateway-service")
+        err := server.ListenAndServe()
+        if err != nil && err != http.ErrServerClosed {
+             log.Error().Err(err).Msg("gatwey-service stopped with error")
+        }
+    }()
 
-     sig := <- sigChan
+    sig := <- sigChan
 
-     log.Info().Str("signal", sig.String()).Msg("received shutdown signal")
+    log.Info().Str("signal", sig.String()).Msg("received shutdown signal")
 
-     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-     defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
 
-     err := server.Shutdown(ctx)
-     if err != nil {
-         log.Error().Err(err).Msg("gateway-service graceful shutdown failed")
-     } else {
-         log.Info().Msg("gateway-service stopped gracefully")
-     }
+    err := server.Shutdown(ctx)
+    if err != nil {
+        log.Error().Err(err).Msg("gateway-service graceful shutdown failed")
+    } else {
+        log.Info().Msg("gateway-service stopped gracefully")
+    }
 }
