@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/alexey-y-a/go-userauth-microservices/libs/logger"
+	"github.com/alexey-y-a/go-userauth-microservices/libs/metrics"
 	httpHandlers "github.com/alexey-y-a/go-userauth-microservices/services/gateway-service/internal/http"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -34,9 +36,16 @@ func main() {
 
     addr := ":8082"
 
+    mux.Handle("/metrics", promhttp.Handler())
+
+    instrumentedHandler := metrics.InstrumentHandler("gateway-service", mux)
+
     server := &http.Server {
         Addr: addr,
-        Handler: mux,
+        Handler: instrumentedHandler,
+        ReadTimeout: 5 * time.Second,
+        WriteTimeout: 10 * time.Second,
+        IdleTimeout: 120 * time.Second,
     }
 
     sigChan := make(chan os.Signal, 1)
