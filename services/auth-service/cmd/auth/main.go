@@ -11,7 +11,8 @@ import (
 	"github.com/alexey-y-a/go-userauth-microservices/libs/logger"
 	"github.com/alexey-y-a/go-userauth-microservices/libs/metrics"
 	httpHandlers "github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/http"
-	"github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/storage"
+	pgstorage "github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/storage/postgres"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -31,9 +32,24 @@ func main() {
         }
     })
 
-    store := storage.NewMemoryStore()
+    pgDSN := os.Getenv("AUTH_POSTGRES_DSN")
+    if pgDSN == "" {
+        pgDSN = "postgres://userauth:password@localhost:5432/userauth?sslmode=disable"
+    }
 
-    authHandler := httpHandlers.NewAuthHandler(store)
+    pgStore, err := pgstorage.NewStore(pgstorage.Config{DSN: pgDSN})
+    if err != nil {
+        log.Error().Err(err).Msg("failed to init postgres store")
+        os.Exit(1)
+    }
+    defer func() {
+        closeErr := pgStore.Close()
+        if closeErr != nil {
+            log.Error().Err(closeErr).Msg("failed to close postgres store")
+        }
+    }()
+
+    authHandler := httpHandlers.NewAuthHandler(pgStore)
 
     authHandler.RegisterRoutes(mux)
 
@@ -69,7 +85,7 @@ func main() {
      ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
      defer cancel()
 
-     err := server.Shutdown(ctx)
+     err = server.Shutdown(ctx)
      if err != nil {
          log.Error().Err(err).Msg("auth-service graceful shutdown failed")
      } else {
