@@ -3,10 +3,12 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/storage"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (s *Store) CreateUser(ctx context.Context, username, email, passwordHash string) (storage.User, error) {
@@ -23,6 +25,9 @@ RETURNING id, username, email, password_hash;`
 	err := s.db.QueryRowContext(ctx, query, username, email, passwordHash).
 		Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return storage.User{}, storage.ErrUserAlreadyExists
+		}
 		return storage.User{}, fmt.Errorf("insert user: %w", err)
 	}
 
@@ -51,4 +56,12 @@ WHERE username = $1;`
 	}
 
 	return user, true, nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
 }
