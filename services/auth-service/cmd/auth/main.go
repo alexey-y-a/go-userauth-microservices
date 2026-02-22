@@ -10,6 +10,7 @@ import (
 
 	"github.com/alexey-y-a/go-userauth-microservices/libs/logger"
 	"github.com/alexey-y-a/go-userauth-microservices/libs/metrics"
+	authconfig "github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/config"
 	httpHandlers "github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/http"
 	pgstorage "github.com/alexey-y-a/go-userauth-microservices/services/auth-service/internal/storage/postgres"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -17,78 +18,71 @@ import (
 )
 
 func main() {
-    logger.Init()
-    log := logger.L().With().Str("service", "auth-service").Logger()
+	logger.Init()
+	log := logger.L().With().Str("service", "auth-service").Logger()
 
-    mux := http.NewServeMux()
+	cfg := authconfig.LoadConfig()
 
-    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(http.StatusOK)
-        _, err := w.Write([]byte(`{"status":"ok"}`))
-        if err != nil {
-            log.Error().Err(err).Msg("failed to write health response")
-            return
-        }
-    })
+	pgStore, err := pgstorage.NewStore(pgstorage.Config{
+		DSN: cfg.PostgresDSN,
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("failed to init postgres store")
+		os.Exit(1)
+	}
+	defer func() {
+		if err := pgStore.Close(); err != nil {
+			log.Error().Err(err).Msg("failed to close postgres store")
+		}
+	}()
 
-    pgDSN := os.Getenv("AUTH_POSTGRES_DSN")
-    if pgDSN == "" {
-        pgDSN = "postgres://userauth:password@localhost:5432/userauth?sslmode=disable"
-    }
+	authHandler := httpHandlers.NewAuthHandler(pgStore)
 
-    pgStore, err := pgstorage.NewStore(pgstorage.Config{DSN: pgDSN})
-    if err != nil {
-        log.Error().Err(err).Msg("failed to init postgres store")
-        os.Exit(1)
-    }
-    defer func() {
-        closeErr := pgStore.Close()
-        if closeErr != nil {
-            log.Error().Err(closeErr).Msg("failed to close postgres store")
-        }
-    }()
+	mux := http.NewServeMux()
+	authHandler.RegisterRoutes(mux)
 
-    authHandler := httpHandlers.NewAuthHandler(pgStore)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"status":"ok"}`))
+		if err != nil {
+			log.Error().Err(err).Msg("failed to write health response")
+			return
+		}
+	})
 
-    authHandler.RegisterRoutes(mux)
+	mux.Handle("/metrics", promhttp.Handler())
 
-     addr := ":8080"
+	instrumentedHandler := metrics.InstrumentHandler("auth-service", mux)
 
-     instrumentedHadler := metrics.InstrumentHandler("auth-service", mux)
+	server := &http.Server{
+		Addr:         cfg.HTTPAddr,
+		Handler:      instrumentedHandler,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 
-     mux.Handle("/metrics", promhttp.Handler())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-     server := &http.Server {
-         Addr: addr,
-         Handler: instrumentedHadler,
-         ReadTimeout: 5 * time.Second,
-         WriteTimeout: 10 * time.Second,
-         IdleTimeout: 120 * time.Second,
-     }
+	go func() {
+		log.Info().Str("addr", cfg.HTTPAddr).Msg("starting auth-service")
 
-     sigChan := make(chan os.Signal, 1)
-     signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error().Err(err).Msg("auth-service stopped with error")
+		}
+	}()
 
-     go func() {
-         log.Info().Str("addr", addr).Msg("starting auth-service")
+	sig := <-sigChan
+	log.Info().Str("signal", sig.String()).Msg("received shutdown signal")
 
-         err := server.ListenAndServe()
-         if err != nil {
-             log.Error().Err(err).Msg("auth-service stopped with error")
-         }
-     }()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-     sig := <- sigChan
-     log.Info().Str("signal", sig.String()).Msg("received shutdown signal")
-
-     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-     defer cancel()
-
-     err = server.Shutdown(ctx)
-     if err != nil {
-         log.Error().Err(err).Msg("auth-service graceful shutdown failed")
-     } else {
-         log.Info().Msg("auth-service stopped gracefully")
-     }
+	if err := server.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("auth-service graceful shutdown failed")
+	} else {
+		log.Info().Msg("auth-service stopped gracefully")
+	}
 }
