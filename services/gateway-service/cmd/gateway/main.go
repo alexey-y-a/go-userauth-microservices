@@ -15,62 +15,64 @@ import (
 )
 
 func main() {
-    logger.Init()
+	logger.Init()
 
-    log := logger.L().With().Str("service", "geteway-service").Logger()
+	log := logger.L().With().Str("service", "geteway-service").Logger()
 
-    mux := http.NewServeMux()
+	mux := http.NewServeMux()
 
-    mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-      w.Header().Set("Content-Type", "application/json")
-      w.WriteHeader(http.StatusOK)
-      _, err := w.Write([]byte(`{"status":"ok"}`))
-      if err != nil {
-          log.Error().Err(err).Msg("failed to write health response")
-          return
-      }
-    })
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"status":"ok"}`))
+		if err != nil {
+			log.Error().Err(err).Msg("failed to write health response")
+			return
+		}
+	})
 
-    gatewayHandler := httpHandlers.NewGatewayHandler()
-    gatewayHandler.RegisterRoutes(mux)
+	gatewayHandler := httpHandlers.NewGatewayHandler()
+	gatewayHandler.RegisterRoutes(mux)
 
-    addr := ":8082"
+	addr := ":8082"
 
-    mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/metrics", promhttp.Handler())
 
-    instrumentedHandler := metrics.InstrumentHandler("gateway-service", mux)
+	handlerWithRequestID := httpHandlers.RequestIDMiddleware(log, mux)
 
-    server := &http.Server {
-        Addr: addr,
-        Handler: instrumentedHandler,
-        ReadTimeout: 5 * time.Second,
-        WriteTimeout: 10 * time.Second,
-        IdleTimeout: 120 * time.Second,
-    }
+	instrumentedHandler := metrics.InstrumentHandler("gateway-service", handlerWithRequestID)
 
-    sigChan := make(chan os.Signal, 1)
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      instrumentedHandler,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 
-    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	sigChan := make(chan os.Signal, 1)
 
-    go func () {
-        log.Info().Str("addr", addr).Msg("starting gateway-service")
-        err := server.ListenAndServe()
-        if err != nil && err != http.ErrServerClosed {
-             log.Error().Err(err).Msg("gatwey-service stopped with error")
-        }
-    }()
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-    sig := <- sigChan
+	go func() {
+		log.Info().Str("addr", addr).Msg("starting gateway-service")
+		err := server.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			log.Error().Err(err).Msg("gatwey-service stopped with error")
+		}
+	}()
 
-    log.Info().Str("signal", sig.String()).Msg("received shutdown signal")
+	sig := <-sigChan
 
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
+	log.Info().Str("signal", sig.String()).Msg("received shutdown signal")
 
-    err := server.Shutdown(ctx)
-    if err != nil {
-        log.Error().Err(err).Msg("gateway-service graceful shutdown failed")
-    } else {
-        log.Info().Msg("gateway-service stopped gracefully")
-    }
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := server.Shutdown(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("gateway-service graceful shutdown failed")
+	} else {
+		log.Info().Msg("gateway-service stopped gracefully")
+	}
 }
