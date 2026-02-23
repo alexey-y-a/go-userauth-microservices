@@ -53,7 +53,9 @@ func main() {
 
 	mux.Handle("/metrics", promhttp.Handler())
 
-	instrumentedHandler := metrics.InstrumentHandler("auth-service", mux)
+	handlerWithRequestID := httpHandlers.RequestIDMiddleware(log, mux)
+
+	instrumentedHandler := metrics.InstrumentHandler("auth-service", handlerWithRequestID)
 
 	server := &http.Server{
 		Addr:         cfg.HTTPAddr,
