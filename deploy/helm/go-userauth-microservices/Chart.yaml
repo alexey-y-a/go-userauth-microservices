@@ -1,0 +1,6 @@
+apiVersion: v2
+name: go-userauth-microservices
+description: Helm chart for Go user auth microservices (auth, user, gateway, postgres)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
