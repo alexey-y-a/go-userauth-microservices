@@ -7,28 +7,42 @@ authService:
   image:
     repository: auth-service-image
     tag: "latest"
+    pullPolicy: IfNotPresent
   replicaCount: 1
-  port: 8080
+  service:
+    port: 8080
+  resources: {}
 
 userService:
   image:
     repository: user-service-image
     tag: "latest"
+    pullPolicy: IfNotPresent
   replicaCount: 1
-  port: 8081
+  service:
+    port: 8081
+  resources: {}
 
 gatewayService:
   image:
     repository: gateway-service-image
     tag: "latest"
+    pullPolicy: IfNotPresent
   replicaCount: 1
-  port: 8082
+  service:
+    port: 8082
+  resources: {}
 
 postgres:
   image: postgres:16-alpine
   username: auth_user
   password: auth_pass
   database: auth_db
+  host: postgres
   port: 5432
+  dsn: "postgres://auth_user:auth_pass@postgres:5432/auth_db?sslmode=disable"
   storage:
     size: 1Gi
+
+jwt:
+  secret: "change-me-in-real-env"
