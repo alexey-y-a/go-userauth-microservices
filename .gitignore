@@ -32,3 +32,7 @@ coverage/
 # Docker
 /postgres-data
 
+# Локальные конфиги с секретами
+secrets.yaml
+.values.secrets.yaml
+*.secret.yaml

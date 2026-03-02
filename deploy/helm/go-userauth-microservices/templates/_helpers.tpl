@@ -1,5 +1,5 @@
 {{- define "go-userauth-microservices.fullname" -}}
-{{- print "%s" .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- printf "%s" .Chart.Name | trunc 63 | trimSuffix "-" -}}
 {{- end}}
 
 {{- define "go-userauth-microservices.labels" -}}
