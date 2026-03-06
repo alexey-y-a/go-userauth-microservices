@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "go-userauth-microservices.fullname" . }}-gateway
+  labels:
+    {{- include "go-userauth-microservices.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway-service
+spec:
+  replicas: {{ .Values.gatewayService.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "go-userauth-microservices.fullname" . }}-gateway
+      app.kubernetes.io/component: gateway-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "go-userauth-microservices.fullname" . }}-gateway
+        app.kubernetes.io/component: gateway-service
+        {{- include "go-userauth-microservices.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: gateway-service
+          image: "{{ .Values.gatewayService.image.repository }}:{{ .Values.gatewayService.image.tag }}"
+          imagePullPolicy: {{ .Values.gatewayService.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gatewayService.service.port }}
+          env:
+            - name: HTTP_PORT
+              value: "{{ .Values.authService.service.port }}"
+            - name: AUTH_SERVICE_URL
+              value: 'http://{{ include "go-userauth-microservices.fullname" . }}-auth:{{ .Values.authService.service.port }}'
+            - name: USER_SERVICE_URL
+              value: 'http://{{ include "go-userauth-microservices.fullname" . }}-user:{{ .Values.userService.service.port }}'
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-userauth-microservices.fullname" . }}-secrets
+                  key: jwt-secret
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.gatewayService.resources | nindent 12 }}
+
