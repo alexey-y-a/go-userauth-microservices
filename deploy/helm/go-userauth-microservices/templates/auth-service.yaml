@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go-userauth-microservices.fullname" . }}-auth
+  labels:
+    {{- include "go-userauth-microservices.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-service
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ include "go-userauth-microservices.fullname" . }}-auth
+    app.kubernetes.io/component: auth-service
+  ports:
+    - name: http
+      port: {{ .Values.authService.service.port }}
+      targetPort: http

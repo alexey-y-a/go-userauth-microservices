@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "go-userauth-microservices.fullname" . }}-user
+  labels:
+    {{- include "go-userauth-microservices.labels" . | nindent 4 }}
+    app.kubernetes.io/component: user-service
+spec:
+  replicas: {{ .Values.userService.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "go-userauth-microservices.fullname" . }}-user
+      app.kubernetes.io/component: user-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "go-userauth-microservices.fullname" . }}-user
+        app.kubernetes.io/component: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: "{{ .Values.userService.image.repository }} : {{ .Values.userService.image.tag }}"
+          imagePullPolicy: {{ .Values.userService.image.pullPolicy | default "IfNotPresent"}}
+          ports:
+            - name: http
+              containerPort: {{ .Values.userService.service.port }}
+          env:
+            - name: HTTP_PORT
+              value: "{{ .Values.userService.service.port }}"
+            - name: POSTGRES_DSN
+              value: "{{ .Values.postgres.dsn }}"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.userService.resources | nindent 12 }}

@@ -31,7 +31,11 @@ spec:
             - name: POSTGRES_DSN
               value: "{{ .Values.postgres.dsn }}"
             - name: JWT_SECRET
-              value: "{{ .Values.jwt.secret }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-userauth-microservices.fullname" . }}-secrets
+                  key: jwt-secret
+
           livenessProbe:
             httpGet:
               path: /health

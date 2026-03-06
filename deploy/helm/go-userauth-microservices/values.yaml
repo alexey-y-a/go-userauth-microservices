@@ -45,4 +45,5 @@ postgres:
     size: 1Gi
 
 jwt:
-  secret: "change-me-in-real-env"
+  secretValue: ""
+  secretName: ""
