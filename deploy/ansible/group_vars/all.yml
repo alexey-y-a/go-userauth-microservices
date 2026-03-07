@@ -1,0 +1,7 @@
+app_dir: /opt/go-userauth-microservices
+
+deploy_user: ubuntu
+
+env_file: .env
+
+compose_file: docker-compose.yml
