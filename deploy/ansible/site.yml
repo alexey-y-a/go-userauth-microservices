@@ -1,0 +1,70 @@
+---
+- name: Deploy go-userauth-microservices stack with Docker Compose
+  hosts: docker_hosts
+  become: true
+
+  vars:
+    docker_packages_debian:
+      - docker.io
+      - docker-compose-plugin
+
+  tasks:
+    - name: Ensure APT cache is updated (Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install Docker and docker-compose plugin (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: "{{ docker_packages_debian }}"
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Ensure Docker service is enabled and started
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add deploy user to docker group
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: docker
+        append: yes
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: Copy docker-compose.yml to remote host
+      ansible.builtin.copy:
+        src: "{{ compose_file }}"
+        dest: "{{ app_dir }}/docker-compose.yml"
+        mode: "0644"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+
+    - name: Copy .env to remote host (if exists)
+      ansible.builtin.copy:
+        src: "{{ env_file }}"
+        dest: "{{ app_dir }}/.env"
+        mode: "0600"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+      ignore_errors: yes
+
+    - name: Pull latest images
+      ansible.builtin.command:
+        cmd: docker compose pull
+        chdir: "{{ app_dir }}"
+      changed_when: true
+
+    - name: Start application stack
+      ansible.builtin.command:
+        cmd: docker compose up -d --remove-orphans
+        chdir: "{{ app_dir }}"
+      changed_when: true
